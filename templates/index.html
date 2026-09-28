@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ScamShield AI</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div>
+      <div class="brand">🛡️ SCAMSHIELD <span>AI</span></div>
+      <div class="sub">AI-powered scam & fraud detection prototype</div>
+    </div>
+    <div class="badge">DEMO • B.Tech Major Project</div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <p class="eyebrow">DETECT • EXPLAIN • PROTECT</p>
+      <h1>Check a message or URL<br>before you trust it.</h1>
+      <p class="muted">A working prototype combining TF-IDF + Logistic Regression with transparent rule-based risk signals.</p>
+    </div>
+    <div class="shield">🛡</div>
+  </section>
+
+  <div class="stats">
+    <div class="stat"><small>Total scans</small><strong id="total">0</strong></div>
+    <div class="stat"><small>High-risk scans</small><strong id="high">0</strong></div>
+    <div class="stat"><small>Average risk</small><strong id="avg">0%</strong></div>
+  </div>
+
+  
+<div class="scanner-section">
+  <div class="mode-title">
+    <div>
+      <p class="eyebrow">CHOOSE YOUR SCAN</p>
+      <h2>What do you want to check?</h2>
+      <p class="muted">Select a detection mode below. The interface will animate into the scanner you choose.</p>
+    </div>
+  </div>
+
+  <div class="mode-selector" role="tablist">
+    <button class="mode-card active" id="modeMessage" onclick="selectMode('message')" role="tab">
+      <div class="mode-icon">💬</div>
+      <div><strong>Message / Text</strong><small>SMS • WhatsApp • Email • Chat</small></div>
+      <span class="mode-arrow">→</span>
+    </button>
+    <button class="mode-card" id="modeUrl" onclick="selectMode('url')" role="tab">
+      <div class="mode-icon">🔗</div>
+      <div><strong>Website / URL</strong><small>Links • Phishing • Suspicious domains</small></div>
+      <span class="mode-arrow">→</span>
+    </button>
+  </div>
+
+  <div class="scan-panels">
+    <section class="card scan-panel active-panel" id="messagePanel">
+      <div class="cardhead"><h2>💬 Message Scanner</h2><span>NLP / ML</span></div>
+      <p class="panel-help">Paste the message you received and ScamShield will analyze suspicious language and patterns.</p>
+      <textarea id="text" placeholder="Example: URGENT! Your bank account will be blocked. Verify your OTP immediately..."></textarea>
+      <button onclick="scanText()">Analyze Message <span>→</span></button>
+      <div id="textResult" class="result hidden"></div>
+    </section>
+
+    <section class="card scan-panel" id="urlPanel">
+      <div class="cardhead"><h2>🔗 URL Risk Analyzer</h2><span>RULE ENGINE</span></div>
+      <p class="panel-help">Paste a website link to check HTTPS, domain structure, suspicious keywords and phishing indicators.</p>
+      <input id="url" placeholder="https://example.com/login">
+      <button onclick="scanUrl()">Analyze URL <span>→</span></button>
+      <div id="urlResult" class="result hidden"></div>
+    </section>
+  </div>
+</div>
+
+
+  <section class="card">
+    <div class="cardhead"><h2>Recent Scan History</h2><button class="ghost" onclick="loadAll()">↻ Refresh</button></div>
+    <div id="history" class="history"></div>
+  </section>
+
+  <footer>Prototype note: demo model uses a small embedded dataset. For the final project, replace it with a larger labeled dataset and report Accuracy, Precision, Recall and F1.</footer>
+</div>
+<script>
+function esc(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));}
+function riskClass(r){return r>=65?"danger":r>=35?"warn":"safe";}
+function renderResult(el,d){
+  el.className="result "+riskClass(d.risk);
+  el.innerHTML=`<div class="riskrow"><div><small>RISK SCORE</small><div class="score">${d.risk}%</div></div><div class="label">${esc(d.label)}</div></div>
+  <div class="category">${esc(d.category)}</div>
+  <div class="reasons"><b>Why it was flagged</b><ul>${d.reasons.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>
+  <div class="advice"><b>Protect yourself:</b> Don't share OTPs, passwords or payment details; verify the sender/domain through an official channel.</div>
+  <div class="feedback-box" id="feedbackBox-${el.id}">
+    <div class="feedback-title">Was this result correct?</div>
+    <div class="feedback-actions">
+      <button class="feedback-btn" onclick="sendFeedback(${d.scan_id}, 'scam', this)">🚨 It is a Scam</button>
+      <button class="feedback-btn" onclick="sendFeedback(${d.scan_id}, 'legitimate', this)">✅ It is Legitimate</button>
+    </div>
+    <div class="confidence-row">
+      <label>How sure are you?</label>
+      <select id="confidence-${el.id}"><option value="very_sure">Very sure</option><option value="somewhat_sure" selected>Somewhat sure</option><option value="not_sure">Not sure</option></select>
+    </div>
+    <div class="feedback-status" id="feedbackStatus-${el.id}"></div>
+  </div>`;
+}
+
+async function sendFeedback(scanId, userLabel, btn){
+  const resultId = btn.closest('.result').id;
+  const confidence = document.getElementById('confidence-'+resultId).value;
+  const status = document.getElementById('feedbackStatus-'+resultId);
+  const buttons = btn.parentElement.querySelectorAll('button');
+  buttons.forEach(b=>b.disabled=true);
+  try{
+    const r = await fetch('/api/feedback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({scan_id:scanId,user_label:userLabel,confidence})});
+    const d = await r.json();
+    status.textContent = r.ok ? '✓ Feedback submitted. An administrator can review it.' : ('✕ '+(d.error||'Could not submit feedback.'));
+    status.className = 'feedback-status '+(r.ok?'success':'error');
+  }catch(e){
+    status.textContent = '✕ Could not submit feedback.';
+    status.className = 'feedback-status error';
+    buttons.forEach(b=>b.disabled=false);
+  }
+}
+
+function selectMode(mode){
+  const msg=document.getElementById("modeMessage");
+  const url=document.getElementById("modeUrl");
+  const msgPanel=document.getElementById("messagePanel");
+  const urlPanel=document.getElementById("urlPanel");
+  const isMessage=mode==="message";
+  msg.classList.toggle("active",isMessage);
+  url.classList.toggle("active",!isMessage);
+  msgPanel.classList.toggle("active-panel",isMessage);
+  urlPanel.classList.toggle("active-panel",!isMessage);
+  const target=isMessage?document.getElementById("text"):document.getElementById("url");
+  setTimeout(()=>target.focus(),220);
+}
+
+async function scanText(){
+ const text=document.getElementById("text").value.trim();
+ if(!text){alert("Please enter a message to analyze.");return;}
+ const el=document.getElementById("textResult");
+ try{
+   const r=await fetch("/api/scan/text",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
+   const d=await r.json();
+   if(!r.ok) throw new Error(d.error||"Message scan failed.");
+   renderResult(el,d); loadAll();
+ }catch(e){el.className="result danger";el.textContent="Unable to scan message: "+e.message;}
+}
+async function scanUrl(){
+ const url=document.getElementById("url").value.trim();
+ if(!url){alert("Please enter a URL to analyze.");return;}
+ const el=document.getElementById("urlResult");
+ try{
+   const r=await fetch("/api/scan/url",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({url})});
+   const d=await r.json();
+   if(!r.ok) throw new Error(d.error||"URL scan failed.");
+   renderResult(el,d); loadAll();
+ }catch(e){el.className="result danger";el.textContent="Unable to scan URL: "+e.message;}
+}
+async function loadAll(){
+ const [s,h]=await Promise.all([fetch("/api/stats").then(r=>r.json()),fetch("/api/history").then(r=>r.json())]);
+ document.getElementById("total").textContent=s.total; document.getElementById("high").textContent=s.high_risk; document.getElementById("avg").textContent=s.avg_risk+"%";
+ document.getElementById("history").innerHTML=h.length?h.map(x=>`<div class="row"><span class="type">${esc(x.input_type.toUpperCase())}</span><span class="snippet">${esc(x.input_text).slice(0,85)}</span><span class="${riskClass(x.risk)}">${x.risk}%</span><span>${esc(x.category)}</span></div>`).join(""):"<div class='empty'>No scans yet. Try one above.</div>";
+}
+loadAll();
+</script>
+</body>
+</html>
